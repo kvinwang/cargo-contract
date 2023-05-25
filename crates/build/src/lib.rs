@@ -91,9 +91,6 @@ use std::{
     str,
 };
 
-/// This is the maximum number of pages available for a contract to allocate.
-const MAX_MEMORY_PAGES: u32 = 16;
-
 /// Version of the currently executing `cargo-contract` binary.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -113,6 +110,7 @@ pub struct ExecuteArgs {
     pub lint: bool,
     pub output_type: OutputType,
     pub skip_wasm_validation: bool,
+    pub max_memory_pages: u32,
 }
 
 /// Result of the build process.
@@ -430,7 +428,7 @@ fn ensure_maximum_memory_pages(
         }
     } else {
         let initial = mem_ty.limits().initial();
-        *mem_ty = MemoryType::new(initial, Some(MAX_MEMORY_PAGES));
+        *mem_ty = MemoryType::new(initial, Some(maximum_allowed_pages));
     }
 
     Ok(())
@@ -476,13 +474,14 @@ fn post_process_wasm(
     crate_metadata: &CrateMetadata,
     skip_wasm_validation: bool,
     verbosity: &Verbosity,
+    max_memory_pages: u32,
 ) -> Result<()> {
     // Deserialize Wasm module from a file.
     let mut module = load_module(&crate_metadata.original_wasm)
         .context("Loading of original wasm failed")?;
 
     strip_exports(&mut module);
-    ensure_maximum_memory_pages(&mut module, MAX_MEMORY_PAGES)?;
+    ensure_maximum_memory_pages(&mut module, max_memory_pages)?;
     strip_custom_sections(&mut module);
 
     if !skip_wasm_validation {
@@ -565,6 +564,7 @@ pub fn execute(args: ExecuteArgs) -> Result<BuildResult> {
         lint,
         output_type,
         skip_wasm_validation,
+        max_memory_pages,
     } = args;
 
     // The CLI flag `optimization-passes` overwrites optimization passes which are
@@ -689,7 +689,7 @@ pub fn execute(args: ExecuteArgs) -> Result<BuildResult> {
                 "Post processing wasm file".bright_green().bold()
             );
             build_steps.increment_current();
-            post_process_wasm(&crate_metadata, skip_wasm_validation, &verbosity)?;
+            post_process_wasm(&crate_metadata, skip_wasm_validation, &verbosity, max_memory_pages)?;
 
             maybe_println!(
                 verbosity,
